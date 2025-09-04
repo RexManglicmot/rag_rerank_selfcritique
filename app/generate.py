@@ -22,14 +22,35 @@ def build_answer_prompt(question: str, ctx_ids: List[str], ctx_texts: List[str],
         ctx_blocks.append(f"[DOC {i} | id={did}]\n{txt}")
     ctx_str = "\n\n".join(ctx_blocks)
     labels_str = ", ".join(label_space)
+    allowed_ids = ", ".join(ctx_ids)
+
     return (
         "You are a careful biomedical QA assistant. Use ONLY the context snippets.\n"
         f"Allowed labels: {labels_str}\n"
-        "Respond in the format: <label> [doc_id]\n\n"
+        "Cite exactly ONE supporting doc id from the list below.\n"
+        f"Allowed doc_ids: {allowed_ids}\n\n"
+        "STRICT RESPONSE FORMAT (single line):\n"
+        "<label> [doc_id]\n\n"
         f"Question: {question}\n\n"
         f"Context:\n{ctx_str}\n\n"
         "Answer:"
     )
+
+def _normalize_citations(raw_cites: List[str], allowed_ids: List[str]) -> List[str]:
+    # strip wrappers like "doc_id=..." and keep only allowed ids
+    allowed = set(allowed_ids)
+    out = []
+    for c in raw_cites:
+        c2 = c.replace("doc_id=", "").strip()
+        if c2 in allowed:
+            out.append(c2)
+    # de-dup, keep order
+    seen = set()
+    final = []
+    for c in out:
+        if c not in seen:
+            seen.add(c); final.append(c)
+    return final
 
 
 def build_critique_prompt(question: str, ctx_ids: List[str], ctx_texts: List[str], draft: str) -> str:
@@ -139,9 +160,16 @@ class LocalGenerator:
         text = self._generate_text(prompt)
         latency_gen = int((time.time() - t0) * 1000)
         pred_label, citations = parse_label_and_cites(text, self.label_space)
+        citations = _normalize_citations(citations, context_doc_ids_reranked)
+        if not citations:
+            # fallback: force-cite top-1 context
+            citations = [context_doc_ids_reranked[0]]
+
 
         # 2) self-critique
         # Needed for Variant 3 rag+rerank+refine
+        g_score = None
+        revised_flag= False
         latency_crit = 0
         if self.sc_enabled and self.sc_passes > 0:
             c_prompt = build_critique_prompt(question, context_doc_ids_reranked, context_texts_reranked, text)
@@ -152,6 +180,7 @@ class LocalGenerator:
             if self.sc_mode == "revise_if_ungrounded" and g_score < self.sc_threshold and revised:
                 text = revised
                 pred_label, citations = parse_label_and_cites(text, self.label_space)
+                revised_flag = True
 
         return {
             "query_id": query_id,
@@ -160,6 +189,8 @@ class LocalGenerator:
             "citations": citations,
             "latency_ms_gen": latency_gen,
             "latency_ms_critique": latency_crit if self.sc_enabled else 0,
+            "critique_groundedness": g_score if self.sc_enabled else None,
+            "critique_revised": revised_flag if self.sc_enabled else False,
         }
 
 
@@ -185,4 +216,4 @@ if __name__ == "__main__":
     print(json.dumps(out, indent=2))
 
 # Run Python3 -m app.generate
-# 4:10 ish
+# works in VastAi...refer to that for any bugs

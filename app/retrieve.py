@@ -4,15 +4,19 @@ from typing import Dict, List, Any
 import pandas as pd
 import faiss
 from sentence_transformers import SentenceTransformer
-
 from app.config import load_config, print_summary
 from app.util import auto_device, embed_query
 
 
 def _rank_first_relevant(ranked_doc_ids: List[str], gold_ids: List[str]) -> int:
+    """
+    how early the first correct (relevant) document appears in a ranked retrieval list
+    """
+    # Create a set of ground truth relevant doc IDS
     gold = set(gold_ids)
+    # Loop through the ranked docs starting at index 1
     for i, did in enumerate(ranked_doc_ids, start=1):
-        if did in gold:
+        if did in gold:                                 # check if current doc is relevant
             return i
     return 0
 

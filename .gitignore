@@ -8,3 +8,6 @@ venv_rag_rerank_selfcritique
 
 # Other
 *.pyc
+.env
+
+
