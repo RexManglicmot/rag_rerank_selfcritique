@@ -1,0 +1,10 @@
+# Folders
+pics/
+old/
+
+# Venv
+venv_rag_rerank_selfcritique
+
+
+# Other
+*.pyc

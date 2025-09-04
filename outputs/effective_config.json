@@ -1,0 +1,109 @@
+{
+  "paths": {
+    "data_raw": "data/raw/pubmedqa_clean.csv",
+    "data_processed_docs": "data/processed/docs.parquet",
+    "data_processed_queries": "data/processed/queries.parquet",
+    "vector_index": "vectorstore/faiss.index",
+    "vector_meta": "vectorstore/meta.json",
+    "outputs_dir": "outputs",
+    "eval_csv": "outputs/eval.csv",
+    "metrics_summary_csv": "outputs/metrics_summary.csv",
+    "plots_dir": "outputs/plots"
+  },
+  "runtime": {
+    "device": "cpu",
+    "dtype": "float16",
+    "num_threads": 8,
+    "seed": 42
+  },
+  "models": {
+    "embedding_model": "BAAI/bge-small-en-v1.5",
+    "embedding_batch_size": 128,
+    "normalize_embeddings": true,
+    "reranker_model": "BAAI/bge-reranker-v2-m3",
+    "reranker_batch_size": 64,
+    "reranker_max_length": 512,
+    "generator": {
+      "provider": "tgi_http",
+      "model": "mistralai/Mistral-7B-Instruct-v0.2",
+      "max_new_tokens": 64,
+      "temperature": 0.2,
+      "top_p": 0.9,
+      "repetition_penalty": 1.05,
+      "tgi_http": {
+        "base_url": "http://localhost:8080",
+        "timeout_seconds": 30
+      }
+    }
+  },
+  "ingest": {
+    "chunk_size_tokens": 320,
+    "chunk_overlap_tokens": 64,
+    "max_docs": null,
+    "dedup": true
+  },
+  "retrieval": {
+    "k_candidates": 20,
+    "m_context": 8,
+    "use_reranker": true
+  },
+  "self_critique": {
+    "enabled": true,
+    "passes": 1,
+    "mode": "revise_if_ungrounded",
+    "groundedness_check": true,
+    "groundedness_threshold": 3,
+    "require_citations": true,
+    "max_edits": 1,
+    "temperature_refine": 0.0,
+    "top_p_refine": 1.0,
+    "timeout_seconds": 20,
+    "prompts": {
+      "answer_template": "answer",
+      "critique_template": "critique"
+    }
+  },
+  "eval": {
+    "primary_k": 8,
+    "mrr_k": 10,
+    "ndcg_k": 10,
+    "label_space": [
+      "yes",
+      "no"
+    ],
+    "log_latency": true,
+    "log_tokens": true,
+    "log_critique": true,
+    "baseline_variant": "rag"
+  },
+  "plots": {
+    "accuracy_bar": true,
+    "recall_at8_bar": true,
+    "citation_coverage_bar": true,
+    "latency_p50_p95_bar": true,
+    "summary_table": true,
+    "rank_first_relevant_pre_post": true,
+    "recall_curve_k1_20": true,
+    "mrr_ndcg_bar": true,
+    "delta_recall_waterfall": true
+  },
+  "variants": [
+    {
+      "name": "rag",
+      "use_reranker": false
+    },
+    {
+      "name": "rag_rerank",
+      "use_reranker": true
+    },
+    {
+      "name": "rag_rerank_refine",
+      "use_reranker": true,
+      "self_critique": {
+        "enabled": true,
+        "passes": 1,
+        "mode": "revise_if_ungrounded"
+      }
+    }
+  ]
+}

@@ -1,0 +1,144 @@
+# -------- PROJECT PATHS --------
+paths:
+  data_raw: data/raw/pubmedqa_train_clean.csv
+  data_processed_docs: data/processed/pubmedqa_train_clean_docs.parquet
+  data_processed_queries: data/processed/pubmedqa_train_clean_queries.parquet
+  vector_index: vectorstore/faiss.index
+  vector_meta: vectorstore/meta.json
+  outputs_dir: outputs
+  eval_csv: outputs/eval.csv
+  metrics_summary_csv: outputs/metrics_summary.csv
+  plots_dir: outputs/plots
+
+# -------- RUNTIME / CUDA / VAST.AI --------
+runtime:
+  device: "cuda"            # "cuda" | "cpu" (Vast.ai GPU → cuda)
+  # dtype: "float16"          # "float16" | "bfloat16" | "float32" no longer needed resolves in the def embed_and_index in ingest.py
+  num_threads: 8
+  seed: 42
+  # vast: NOT NEEDED
+  #   note: "Optional metadata for your README; not used by code."
+  #   gpu_name: "A100-40GB"   # set to whatever instance you rent
+  #   docker_image: "nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04"
+
+# -------- MODELS --------
+models:
+  # Embeddings (Sentence-Transformers)
+  embedding_model: "BAAI/bge-small-en-v1.5"
+  embedding_batch_size: 128
+  normalize_embeddings: true
+
+  # Cross-encoder reranker (FlagEmbedding / BGE-reranker)
+  reranker_model: "BAAI/bge-reranker-v2-m3"
+  reranker_batch_size: 64
+  reranker_max_length: 512
+
+  # Generator (pick ONE provider below)
+  generator:
+    provider: "tgi_http"        # "hf_serverless" | "tgi_http" | "local_transformers"
+    model: "mistralai/Mistral-7B-Instruct-v0.2"  # or "Qwen/Qwen2.5-3B-Instruct"
+    max_new_tokens: 64
+    temperature: 0.2
+    top_p: 0.9
+    repetition_penalty: 1.05
+    # HF Serverless (requires HF_TOKEN env var)
+    # hf_serverless:
+    #   do_sample: false
+    #   timeout_seconds: 30
+    # TGI HTTP endpoint (Vast.ai or HF Inference Endpoint)
+    tgi_http:
+      base_url: "http://localhost:8080"  # e.g., your Vast.ai public IP:port
+      timeout_seconds: 30
+    # Local transformers (GPU)
+    # local_transformers:
+    #   device_map: "auto"
+    #   attn_impl: "sdpa"
+
+# -------- INGEST / CHUNKING --------
+ingest:
+  chunk_size_tokens: 320
+  chunk_overlap_tokens: 64
+  max_docs: null              # set integer to subsample for quick runs
+  dedup: true
+
+# -------- RETRIEVAL / RERANK / CONTEXT --------
+retrieval:
+  k_candidates: 20            # retrieve top-k before rerank
+  m_context: 8                # keep top-m after rerank
+  use_reranker: true
+
+# # -------- SELF-CONSISTENCY --------
+# self_consistency:
+#   enabled: true               # set false to disable for a run
+#   n_votes: 3
+#   prompt_noise_eps: 0.05      # tiny perturbations to encourage diversity
+
+# Self-critique now
+self_critique:
+  enabled: true            # master switch per-variant (overridden in variants below)
+  passes: 1                # 1 critique/refine pass after the initial answer
+  mode: "revise_if_ungrounded"   # "score_only" | "revise_if_ungrounded"
+  groundedness_check: true # judge the answer against provided context
+  groundedness_threshold: 3 # 1–5 scale; revise if < threshold
+  require_citations: true   # force citations to supporting doc_ids in the final output
+  max_edits: 1              # don’t let it rewrite endlessly
+  temperature_refine: 0.0   # keep refinement deterministic
+  top_p_refine: 1.0
+  timeout_seconds: 20       # per-critique pass
+  prompts:
+    answer_template: "answer"     # id/key your code uses for the first-pass answer prompt
+    critique_template: "critique" # id/key your code uses for the critique/refine prompt
+
+
+# -------- EVAL (YOUR LOCKED METRICS) --------
+eval:
+  primary_k: 8                # Context Recall@8
+  mrr_k: 10
+  ndcg_k: 10
+  # Label set for PubMedQA
+  label_space: ["yes", "no"]      # "maybe" was here, but took it out
+  # Time & tokens logging
+  log_latency: true
+  log_tokens: true
+  log_critique: true 
+  # Win-rate reference variant
+  baseline_variant: "rag"
+
+# -------- PLOTS (YOUR LOCKED PLOTS) --------
+plots:
+  accuracy_bar: true
+  recall_at8_bar: true
+  citation_coverage_bar: true
+  latency_p50_p95_bar: true
+  summary_table: true
+
+  # Added 1–4 you requested
+  rank_first_relevant_pre_post: true
+  recall_curve_k1_20: true
+  mrr_ndcg_bar: true
+  delta_recall_waterfall: true
+
+# -------- VARIANTS TO RUN --------
+variants:
+  - name: "rag"
+    use_reranker: false
+    # self_consistency: { enabled: false }
+  - name: "rag_rerank"
+    use_reranker: true
+    # self_consistency: { enabled: false }
+  # - name: "rag_rerank_sc"
+  #   use_reranker: true
+  #   self_consistency:
+  #     enabled: true
+  #     n_votes: 3
+  # NEW: RAG + Rerank + Self-Critique (one refine pass)
+  - name: "rag_rerank_refine"
+    use_reranker: true
+    # self_consistency: { enabled: false }
+    self_critique:
+      enabled: true
+      passes: 1
+      mode: "revise_if_ungrounded"
+
+# Looks good
+#9/3/25
