@@ -1,0 +1,14 @@
+(question, context IDs+texts)
+        │
+        ▼
+  build_answer_prompt → first LLM → raw text
+        │                         │
+        ├── sanitize → one-line "<yes|no> [doc_id]"
+        │
+        ├── parse yes/no + citations (restrict to allowed IDs)
+        │
+        └─[if self-critique enabled]
+             build_critique_prompt → judge LLM → JSON
+             │        │
+             │        └─ validate quote against chosen doc
+             └─ if ungrounded (or auto & revised given) → revise answer
